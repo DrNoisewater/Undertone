@@ -1,0 +1,91 @@
+{
+  "name": "undertone",
+  "version": "0.4.11",
+  "private": true,
+  "type": "module",
+  "description": "Private, local dictation by Noisewater Labs",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "build:native": "node scripts/build-native.mjs",
+    "package": "npm run typecheck && npm run build && npm run build:native && electron-builder",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "build": {
+    "appId": "com.noisewaterlabs.undertone",
+    "productName": "Undertone",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/native",
+        "to": "native"
+      },
+      {
+        "from": "build/icons",
+        "to": "icons"
+      }
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Undertone records only while you dictate and transcribes locally."
+      },
+      "icon": "build/icons/icon.png"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icons/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icons/icon.ico",
+      "uninstallerIcon": "build/icons/icon.ico"
+    },
+    "asarUnpack": [
+      "**/*.node",
+      "**/onnxruntime-node/bin/**"
+    ],
+    "afterPack": "scripts/brand-windows.cjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.0.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "author": "Noisewater Labs",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "typescript": "^6.0.2",
+    "vite": "^7.3.2",
+    "resedit": "1.7.2"
+  }
+}
