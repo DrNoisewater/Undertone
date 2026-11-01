@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title Undertone - Noisewater Labs
 if /i "%~1"=="-package" goto packageOnly
 set "FAILED=0"
-echo Undertone 0.4.11 - Windows build
+echo Undertone 1.4.0 - Windows build
 where node >nul 2>nul
 if errorlevel 1 (
  echo [MISSING] Node.js 22.12 or later is required. https://nodejs.org/

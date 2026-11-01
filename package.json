@@ -1,6 +1,6 @@
 {
   "name": "undertone",
-  "version": "0.4.11",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "description": "Private, local dictation by Noisewater Labs",
