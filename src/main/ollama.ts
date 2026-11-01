@@ -221,6 +221,7 @@ export async function rewriteWithOllama(
   baseUrl: string,
   modelName: string,
   systemPrompt: string,
+  userMessage: string,
   rawText: string,
   onTiming?: (seconds: number, loadSeconds: number) => void,
 ): Promise<string> {
@@ -255,15 +256,7 @@ export async function rewriteWithOllama(
             },
             {
               role: 'user',
-              content: [
-                'Rewrite the dictated text below.',
-                'If the speaker corrected themselves or changed their mind, use only their final intent.',
-                'Reply with only the final rewritten text — no preface, explanation, labels, or quotation marks.',
-                '',
-                '<dictation>',
-                rawText,
-                '</dictation>',
-              ].join('\n'),
+              content: userMessage,
             },
           ],
         }),
