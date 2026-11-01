@@ -92,7 +92,7 @@ Keep a short `TASK_STATUS.md`: goal, done, remaining (specific), next verificati
 - Build native helper: `npm run build:native` (on Linux it just prints a skip message and exits 0)
 - Run all tests: `npm test` (Node's built-in test runner, no extra framework)
 - Run one test file: `node --experimental-strip-types --test tests/core.test.ts`
-- Package, unpacked: `npx electron-builder --win dir --x64 --publish never` on Windows; on Linux `npx electron-builder --linux dir --publish never` only checks that packaging config works
+- Package the installer: `npx electron-builder --win nsis --x64 --publish never` on Windows; on Linux `npx electron-builder --linux dir --publish never` only checks that packaging config works
 - Full local Windows build plus installer: `BUILD.cmd` (Windows only)
 - Launch in dev: `npm run dev` (needs a desktop; can't run in a headless Linux container)
 
@@ -104,11 +104,11 @@ Keep a short `TASK_STATUS.md`: goal, done, remaining (specific), next verificati
 - `tests/` — `*.test.ts` run with `node --experimental-strip-types --test`
 - `native/`, `swift/` — platform helpers for focus detection, paste and hotkeys
 - `scripts/` — native build (`build-native.mjs`) and the electron-builder `afterPack` icon hook (`brand-windows.cjs`)
-- `.github/workflows/` — `ci.yml` (Windows build and tests on every PR), `release.yml` (manual Windows release)
+- `.github/workflows/` — `ci.yml` (Windows build, tests and installer artifact on every PR), `release.yml` (manual Windows release)
 
 **Can't run or verify on Linux**
 - Windows native helper compile (`csc.exe`), UI Automation focus detection, and the Ctrl+V paste helper
-- Windows packaging (`--win`), NSIS installer, and the executable icon branding on a real `.exe` (tests cover the hook with synthetic executables)
+- Windows packaging (`--win`), the NSIS installer, auto-update download/install, and the executable icon branding on a real `.exe` (tests cover the hook with synthetic executables)
 - Running the app or UI, microphone capture, global hotkeys, the overlay window
 - Ollama rewriting quality and the Windows Ollama auto-installer
 - For Windows behavior, use the CI workflow on a PR and mark anything else **NOT VERIFIED**.
@@ -120,6 +120,9 @@ Keep a short `TASK_STATUS.md`: goal, done, remaining (specific), next verificati
 - `src/renderer/App.tsx` and `styles.css` are written as very long lines; edit carefully and don't reformat them as part of an unrelated change.
 - Shell for Windows scripts is cmd (`BUILD.cmd`); CI steps use PowerShell.
 
-**Releases**
-- GitHub → Actions → "Release (Windows)" → Run workflow → enter a version like `1.3.0`. It tests, builds, zips `release/win-unpacked` as `Undertone-v<version>-win-x64.zip`, creates tag `v<version>` and a Release with auto-generated notes. It fails if the tag already exists.
+**Releases and updates**
+- GitHub → Actions → "Release (Windows)" → Run workflow → enter a version like `1.4.0`. It runs the tests, builds a one-click installer, and creates tag `v<version>` plus a Release with three files: `Undertone-Setup-<version>.exe` (what users download), `latest.yml` and `.exe.blockmap` (read by the auto-updater; don't delete them). It fails if the tag already exists.
 - The release version is stamped into the packaged app only (`-c.extraMetadata.version`); `package.json` in the repo isn't changed.
+- Auto-update: `src/main/updater.ts` (electron-updater). The installed Windows app checks this repo's latest GitHub Release 15 s after start and every 6 h, downloads quietly, installs when the app quits, and the tray offers "Restart to update". It doesn't run in dev or on macOS.
+- Updates only work while `DrNoisewater/Undertone` is **public** (the `build.publish` setting in `package.json`). If the repo is renamed or goes private, installed copies stop updating.
+- Don't change `nsis.artifactName` or the product name without updating `release.yml`; the updater finds the installer by that name.

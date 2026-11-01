@@ -41,17 +41,18 @@ jobs:
       - name: Build Windows native helper
         run: npm run build:native
 
-      - name: Package app (smoke test, not published)
+      - name: Build installer (not published)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
-          npx --no-install electron-builder --win dir --x64 --publish never
-          if (-not (Test-Path "release/win-unpacked/Undertone.exe")) { Write-Error "Packaged app missing."; exit 1 }
+          npx --no-install electron-builder --win nsis --x64 --publish never
+          if (-not (Test-Path "release/Undertone-Setup-*.exe")) { Write-Error "Installer missing."; exit 1 }
+          if (-not (Test-Path "release/win-unpacked/resources/app-update.yml")) { Write-Error "Update config missing from packaged app."; exit 1 }
 
-      - name: Upload packaged app
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: Undertone-PR${{ github.event.pull_request.number }}
-          path: release/win-unpacked/
+          path: release/Undertone-Setup-*.exe
           retention-days: 14
           if-no-files-found: error
