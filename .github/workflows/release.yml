@@ -67,28 +67,27 @@ jobs:
       - name: Build Windows native helper
         run: npm run build:native
 
-      - name: Package app
+      - name: Build installer
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx --no-install electron-builder --win dir --x64 --publish never "-c.extraMetadata.version=$env:VERSION"
+        run: npx --no-install electron-builder --win nsis --x64 --publish never "-c.extraMetadata.version=$env:VERSION"
 
-      - name: Create zip
-        id: zip
+      - name: Check installer and update files
         run: |
-          $zip = "$env:APP_NAME-v$env:VERSION-win-x64.zip"
-          if (-not (Test-Path "release/win-unpacked/$env:APP_NAME.exe")) {
-            Write-Error "Packaged app not found at release/win-unpacked/$env:APP_NAME.exe"
-            exit 1
+          $setup = "release/$env:APP_NAME-Setup-$env:VERSION.exe"
+          $files = @($setup, "$setup.blockmap", "release/latest.yml")
+          foreach ($f in $files) {
+            if (-not (Test-Path $f)) { Write-Error "Expected build output not found: $f"; exit 1 }
           }
-          7z a -tzip -mx=7 $zip ./release/win-unpacked/*
-          if ($LASTEXITCODE -ne 0) { Write-Error "Zipping failed."; exit 1 }
-          "path=$zip" >> $env:GITHUB_OUTPUT
+          $latest = Get-Content release/latest.yml -Raw
+          if ($latest -notmatch "version: $([regex]::Escape($env:VERSION))") { Write-Error "latest.yml does not describe version $env:VERSION"; exit 1 }
 
       - name: Create tag and GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$env:VERSION" "${{ steps.zip.outputs.path }}" `
+          $setup = "release/$env:APP_NAME-Setup-$env:VERSION.exe"
+          gh release create "v$env:VERSION" $setup "$setup.blockmap" release/latest.yml `
             --target "$env:GITHUB_SHA" `
             --title "$env:APP_NAME v$env:VERSION" `
             --generate-notes

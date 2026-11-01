@@ -15,6 +15,7 @@ import {
 import { getPermissionState } from './permissions';
 import { loadSettings } from './settings';
 import { ensureStorage } from './storage';
+import { restartToUpdate, startAutoUpdates } from './updater';
 import { createMainWindow, createOverlayWindow, positionOverlayWindow } from './windows';
 import type { AppSettings, AppStatus } from '../shared/types';
 
@@ -211,6 +212,7 @@ async function bootstrap(): Promise<void> {
   await ensureOverlayWindow();
   // Idle overlay remains hidden, including for older saved keep-visible preferences.
   createTray();
+  startAutoUpdates(version => setTrayMenu(version));
 
   helperReady = await ensureNativeHelper();
 
@@ -230,14 +232,19 @@ function createTray(): void {
   tray = new Tray(icon);
   tray.setToolTip('Undertone');
 
+  setTrayMenu();
+  tray.on('click', () => showMainWindow());
+}
+
+function setTrayMenu(updateVersion?: string): void {
+  if (!tray) return;
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Undertone', click: () => showMainWindow() },
+    ...(updateVersion ? [{ label: `Restart to update (${updateVersion})`, click: () => { shutdown(); restartToUpdate(); } }] : []),
     { type: 'separator' },
     { label: 'Quit Undertone', click: () => { shutdown(); app.quit(); } },
   ]);
-
   tray.setContextMenu(contextMenu);
-  tray.on('click', () => showMainWindow());
 }
 
 if (singleInstance) app.whenReady().then(bootstrap).catch(error => { console.error(error); void import('electron').then(({dialog}) => dialog.showErrorBox('Undertone could not start', String(error))); app.quit(); });
