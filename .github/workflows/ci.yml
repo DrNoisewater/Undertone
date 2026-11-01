@@ -47,3 +47,11 @@ jobs:
         run: |
           npx --no-install electron-builder --win dir --x64 --publish never
           if (-not (Test-Path "release/win-unpacked/Undertone.exe")) { Write-Error "Packaged app missing."; exit 1 }
+
+      - name: Upload packaged app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Undertone-PR${{ github.event.pull_request.number }}
+          path: release/win-unpacked/
+          retention-days: 14
+          if-no-files-found: error
