@@ -56,3 +56,21 @@ export async function prepareDictationText(rawText: string, options: {spokenForm
   }
   return {finalText:replaceWords(finalText, options.wordReplacements),usedRewriteFallback};
 }
+
+// Fraction of the speaker's words (minus fillers) that must survive each cleanup level.
+const MIN_KEPT: Record<'soft'|'medium'|'high', number> = {soft: 0.85, medium: 0.7, high: 0.6};
+const FILLERS = new Set(['um','umm','uh','uhh','er','erm','ah','hmm','mm','like','so','just','you','know','i','mean','kind','sort','of','actually','basically','literally','really','okay','ok','yeah','well','right','wait','no']);
+const words = (s: string) => s.toLocaleLowerCase().match(/[\p{L}\p{N}']+/gu) ?? [];
+
+/** Rejects rewrites that drop or invent too much of what the speaker said. Short dictations are not checked. */
+export function keepsSpeakerWords(original: string, candidate: string, level: 'soft'|'medium'|'high'): boolean {
+  const spoken = words(original).filter(w => !FILLERS.has(w));
+  if (spoken.length < 8) return true;
+  const written = words(candidate);
+  const available = new Map<string, number>();
+  for (const w of written) available.set(w, (available.get(w) ?? 0) + 1);
+  let kept = 0;
+  for (const w of spoken) { const n = available.get(w) ?? 0; if (n > 0) { kept++; available.set(w, n - 1); } }
+  const added = written.length - words(original).length;
+  return kept / spoken.length >= MIN_KEPT[level] && added <= Math.max(6, words(original).length * 0.25);
+}

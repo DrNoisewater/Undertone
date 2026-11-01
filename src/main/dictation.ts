@@ -1,10 +1,10 @@
 import { getRewriteTimings, recordRewriteTiming } from './rewrite-timings';
 import { pasteExplanation } from '../shared/paste-feedback';
-import { prepareDictationText } from '../shared/text-tools';
+import { keepsSpeakerWords, prepareDictationText } from '../shared/text-tools';
 import { clipboard } from 'electron';
 
 import type { AppSettings, AppStatus, FocusInfo, ProcessAudioResult } from '../shared/types';
-import { getEnhancementPrompt } from './prompts';
+import { getEnhancementPrompt, getEnhancementTask } from './prompts';
 import { rewriteWithOllama } from './ollama';
 import { triggerPaste } from './native-helper';
 import { addHistory } from './history';
@@ -61,13 +61,20 @@ export async function processDictationAudio({
   });
 
   const {finalText, usedRewriteFallback} = await prepareDictationText(rawText, settings,
-    settings.enhancementLevel === 'none' ? undefined : text => rewriteWithOllama(
-      settings.ollamaBaseUrl,
-      settings.textModel,
-      getEnhancementPrompt(settings.styleMode, settings.enhancementLevel) + '\nPreserve every line break and paragraph break in the input.\nPreserve names and spelling from this vocabulary when relevant: ' + settings.vocabulary,
-      text,
-      (seconds,loadSeconds) => recordRewriteTiming(settings.ollamaBaseUrl + '|' + settings.textModel, {level:settings.enhancementLevel,seconds,loadSeconds,words:text.trim().split(/\s+/u).length}),
-    ),
+    settings.enhancementLevel === 'none' ? undefined : async text => {
+      const level = settings.enhancementLevel as 'soft'|'medium'|'high';
+      const candidate = await rewriteWithOllama(
+        settings.ollamaBaseUrl,
+        settings.textModel,
+        getEnhancementPrompt(settings.styleMode, level) + '\nPreserve every line break and paragraph break in the input.\nPreserve names and spelling from this vocabulary when relevant: ' + settings.vocabulary,
+        getEnhancementTask(level, text),
+        text,
+        (seconds,loadSeconds) => recordRewriteTiming(settings.ollamaBaseUrl + '|' + settings.textModel, {level,seconds,loadSeconds,words:text.trim().split(/\s+/u).length}),
+      );
+      // Fall back to the speaker's own words rather than paste a rewrite that lost or invented content.
+      if (!keepsSpeakerWords(text, candidate, level)) throw new Error('Rewrite drifted too far from what was said.');
+      return candidate;
+    },
   );
 
   onTextReady?.({rawText, finalText, pasted:false, focusInfo:targetFocus});
@@ -94,7 +101,7 @@ export async function processDictationAudio({
     phase: 'done',
     rewriteTimings: getRewriteTimings(settings.ollamaBaseUrl + '|' + settings.textModel),
     title: pasted ? 'Paste sent' : 'Copied — paste manually',
-    detail: pasteExplanation(pasteReason).replaceAll('Ctrl+V', process.platform === 'darwin' ? 'Command+V' : 'Ctrl+V') + (usedRewriteFallback ? ' Your original wording was used because polishing was unavailable or changed formatting.' : ''),
+    detail: pasteExplanation(pasteReason).replaceAll('Ctrl+V', process.platform === 'darwin' ? 'Command+V' : 'Ctrl+V') + (usedRewriteFallback ? ' Your original wording was used because polishing was unavailable, changed formatting, or drifted from what you said.' : ''),
     preview: finalText,
     rawText,
   });
