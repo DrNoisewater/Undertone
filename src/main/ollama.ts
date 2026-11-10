@@ -70,13 +70,21 @@ async function fetchWithTimeout(
 
 const OLLAMA_APP_PATH = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Ollama', 'ollama app.exe') : '/Applications/Ollama.app';
 
+// The server alone: no tray icon or chat window. Windows only; macOS keeps opening the app.
+const OLLAMA_SERVER_PATH = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Ollama', 'ollama.exe') : '';
+
 export function isOllamaInstalled(): boolean {
-  return fs.existsSync(OLLAMA_APP_PATH);
+  return fs.existsSync(OLLAMA_APP_PATH) || (OLLAMA_SERVER_PATH !== '' && fs.existsSync(OLLAMA_SERVER_PATH));
 }
 
-export async function launchOllamaApp(): Promise<void> {
+export async function launchOllamaApp(baseUrl?: string): Promise<void> {
+  const hidden = OLLAMA_SERVER_PATH !== '' && fs.existsSync(OLLAMA_SERVER_PATH);
+  // Bind the server to the address Undertone talks to (loopback only).
+  const env = hidden && baseUrl ? {...process.env, OLLAMA_HOST: new URL(requireLoopback(baseUrl)).host} : process.env;
   await new Promise<void>((resolve,reject)=>{
-    const child=spawn(process.platform==='win32'?OLLAMA_APP_PATH:'open',process.platform==='win32'?[]:['-a','Ollama'],{detached:true,stdio:'ignore',windowsHide:true});
+    const child=hidden
+      ? spawn(OLLAMA_SERVER_PATH,['serve'],{detached:true,stdio:'ignore',windowsHide:true,env})
+      : spawn(process.platform==='win32'?OLLAMA_APP_PATH:'open',process.platform==='win32'?[]:['-a','Ollama'],{detached:true,stdio:'ignore',windowsHide:true});
     child.once('error',reject);
     child.once('spawn',()=>{child.unref();resolve();});
   });
@@ -90,11 +98,19 @@ async function waitForOllama(baseUrl: string, attempts = 10): Promise<boolean> {
   return false;
 }
 
+let starting: Promise<boolean> | null = null;
+
 export async function ensureOllamaRunning(baseUrl: string): Promise<boolean> {
   if (await isOllamaReachable(baseUrl)) return true;
+  // The warm-up at recording start and the rewrite can both ask; start the server only once.
+  starting ??= startOllama(baseUrl).finally(() => { starting = null; });
+  return starting;
+}
+
+async function startOllama(baseUrl: string): Promise<boolean> {
   if (!isOllamaInstalled()) return false;
   try {
-    await launchOllamaApp();
+    await launchOllamaApp(baseUrl);
     return waitForOllama(baseUrl);
   } catch {
     return false;
@@ -230,6 +246,7 @@ async function verifyLocalModel(baseUrl: string, modelName: string): Promise<{ca
 
 /** Loads the writing model into memory while the user is still speaking, so the rewrite does not wait for it. */
 export async function warmOllamaModel(baseUrl: string, modelName: string): Promise<void> {
+  await ensureOllamaRunning(baseUrl);
   await verifyLocalModel(baseUrl, modelName);
   // An empty prompt only loads the model; nothing is generated.
   await fetchWithTimeout(buildUrl(baseUrl, '/api/generate'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model:requireLocalModel(modelName), keep_alive:'10m'}) }, OLLAMA_CHAT_TIMEOUT_MS);
@@ -245,6 +262,8 @@ export async function rewriteWithOllama(
 ): Promise<string> {
   try {
     const started = performance.now();
+    // Restart Ollama if it was closed since Undertone started.
+    await ensureOllamaRunning(baseUrl);
     const info = await verifyLocalModel(baseUrl, modelName);
     const response = await fetchWithTimeout(
       buildUrl(baseUrl, '/api/chat'),
