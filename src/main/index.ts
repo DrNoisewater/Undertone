@@ -217,6 +217,9 @@ async function bootstrap(): Promise<void> {
   helperReady = await ensureNativeHelper();
 
   await ensureHotkeyListener();
+
+  // Load the downloaded speech model now instead of on the first dictation. Never downloads.
+  if (settings.setupComplete) void ensureStorage(settings).then(async storage => (await import('./transcription')).warmTranscriber(settings, storage)).catch(() => {});
 }
 
 function getTrayIconPath(): string {

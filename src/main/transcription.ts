@@ -32,6 +32,11 @@ export async function prepareTranscriber(
   await writeFile(path.join(paths.models, 'ready.json'), JSON.stringify({ model: settings.whisperModel }));
 }
 
+/** Loads an already-downloaded speech model in the background so the first dictation does not wait for it. */
+export async function warmTranscriber(settings: AppSettings, paths: StoragePaths): Promise<void> {
+  await getTranscriber(settings, paths);
+}
+
 async function getTranscriber(settings: AppSettings, paths: StoragePaths, download = false, onProgress?: (detail: string) => void): Promise<Transcriber> {
   configureTransformers(paths);
 
