@@ -123,7 +123,8 @@ export async function getFocusInfo(): Promise<FocusInfo> {
 
 export async function triggerPaste(targetFocus?: FocusInfo): Promise<{ok:boolean;reason:string}> {
   if (!targetFocus) return {ok:false,reason:'no_target'};
-  if (!targetFocus.canPaste) return {ok:false,reason:targetFocus.reason || 'no_field'};
+  // Windows re-checks the field at paste time (see checkPasteTarget); macOS still requires a field at capture.
+  if (process.platform !== 'win32' && !targetFocus.canPaste) return {ok:false,reason:targetFocus.reason || 'no_field'};
   const args = ['paste', targetFocus.bundleIdentifier ?? '', String(targetFocus.processIdentifier ?? ''), targetFocus.windowHandle ?? '', targetFocus.focusToken ?? ''];
   if (process.platform === 'win32') args.push(targetFocus.fieldSignature ?? '');
   try {

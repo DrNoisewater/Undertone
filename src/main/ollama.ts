@@ -217,6 +217,24 @@ export async function pullOllamaModel(
   }
 }
 
+async function verifyLocalModel(baseUrl: string, modelName: string): Promise<{capabilities?: string[]}> {
+  requireLocalModel(modelName);
+  const installed = await listOllamaModels(baseUrl);
+  if (!installed.some(model => model.name === modelName)) throw new Error('The selected model is not installed locally.');
+  const infoResponse = await fetchWithTimeout(buildUrl(baseUrl, '/api/show'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model:modelName}) });
+  if (!infoResponse.ok) throw new Error('Could not verify that the model is local.');
+  const info = await infoResponse.json() as {remote_host?: string; remote_model?: string; capabilities?: string[]; model_info?: Record<string, unknown>};
+  if (info.remote_host || info.remote_model || !info.model_info || Object.keys(info.model_info).length === 0) throw new Error('Remote or unverified models cannot process dictation.');
+  return info;
+}
+
+/** Loads the writing model into memory while the user is still speaking, so the rewrite does not wait for it. */
+export async function warmOllamaModel(baseUrl: string, modelName: string): Promise<void> {
+  await verifyLocalModel(baseUrl, modelName);
+  // An empty prompt only loads the model; nothing is generated.
+  await fetchWithTimeout(buildUrl(baseUrl, '/api/generate'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model:requireLocalModel(modelName), keep_alive:'10m'}) }, OLLAMA_CHAT_TIMEOUT_MS);
+}
+
 export async function rewriteWithOllama(
   baseUrl: string,
   modelName: string,
@@ -227,13 +245,7 @@ export async function rewriteWithOllama(
 ): Promise<string> {
   try {
     const started = performance.now();
-    requireLocalModel(modelName);
-    const installed = await listOllamaModels(baseUrl);
-    if (!installed.some(model => model.name === modelName)) throw new Error('The selected model is not installed locally.');
-    const infoResponse = await fetchWithTimeout(buildUrl(baseUrl, '/api/show'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model:modelName}) });
-    if (!infoResponse.ok) throw new Error('Could not verify that the model is local.');
-    const info = await infoResponse.json() as {remote_host?: string; remote_model?: string; capabilities?: string[]; model_info?: Record<string, unknown>};
-    if (info.remote_host || info.remote_model || !info.model_info || Object.keys(info.model_info).length === 0) throw new Error('Remote or unverified models cannot process dictation.');
+    const info = await verifyLocalModel(baseUrl, modelName);
     const response = await fetchWithTimeout(
       buildUrl(baseUrl, '/api/chat'),
       {

@@ -2,6 +2,7 @@
 export function pasteExplanation(reason: string): string {
   const messages: Record<string,string> = {
     sent: 'Paste shortcut sent to your original field. If nothing appeared, press Ctrl+V; your text is on the clipboard.',
+    sent_window: 'Paste shortcut sent to the same window you started in. If nothing appeared, press Ctrl+V; your text is on the clipboard.',
     sent_compatible: 'Paste shortcut sent using compatible editor detection. If nothing appeared, press Ctrl+V; your text is on the clipboard.',
     auto_paste_off: 'Automatic paste is off. Click your text field and press Ctrl+V.',
     no_target: 'No original destination was captured. Click your text field and press Ctrl+V.',

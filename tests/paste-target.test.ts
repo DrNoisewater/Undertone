@@ -12,8 +12,13 @@ test('matching field IDs never override a changed window or process',()=>{
  assert.equal(checkPasteTarget(original,{...original,windowHandle:'20'}),'window_changed');
  assert.equal(checkPasteTarget(original,{...original,processIdentifier:200}),'window_changed');
 });
-test('missing identifiers do not enable fallback',()=>{
- assert.equal(checkPasteTarget({...original,focusToken:'',fieldSignature:''},{...original,focusToken:'',fieldSignature:''}),'field_changed');
+test('unidentified field in the same window still gets the paste (Chromium apps on first use)',()=>{
+ const unidentified={canPaste:false,processIdentifier:100,windowHandle:'10',reason:'no_field'};
+ assert.equal(checkPasteTarget(unidentified,original),null);
+ assert.equal(checkPasteTarget(unidentified,{...unidentified,reason:'unverified_field'}),null);
+ assert.equal(checkPasteTarget(original,{...unidentified}),null);
+ assert.equal(checkPasteTarget(unidentified,{...original,windowHandle:'20'}),'window_changed');
+ assert.equal(checkPasteTarget(unidentified,{...unidentified,reason:'password'}),'password');
 });
 test('protected or inaccessible current field always blocks paste',()=>{
  for(const reason of ['password','disabled','read_only','accessibility_unavailable'])assert.equal(checkPasteTarget(original,{...original,canPaste:false,reason}),reason);
@@ -22,5 +27,6 @@ test('protected or inaccessible current field always blocks paste',()=>{
 test('paste outcomes explain the limitation and preserve manual recovery',()=>{
  for(const reason of ['no_field','field_changed','window_changed','modifiers_held','input_blocked','helper_unavailable'])assert.match(pasteExplanation(reason),/Ctrl\+V/);
  assert.match(pasteExplanation('sent'),/shortcut sent/);
+ assert.match(pasteExplanation('sent_window'),/Ctrl\+V/);
  assert.doesNotMatch(pasteExplanation('sent'),/successfully pasted/);
 });

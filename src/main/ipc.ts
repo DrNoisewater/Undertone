@@ -17,7 +17,7 @@ import type {
 import { RECOMMENDED_TEXT_MODEL } from '../shared/recommendations';
 import { processDictationAudio } from './dictation';
 import { applyLaunchAtLogin } from './login-item';
-import { pullOllamaModel, listOllamaModels, isOllamaReachable, ensureOllamaRunning } from './ollama';
+import { pullOllamaModel, listOllamaModels, isOllamaReachable, ensureOllamaRunning, warmOllamaModel } from './ollama';
 import { getFocusInfo } from './native-helper';
 import { getPermissionState, requestMicrophoneAccess, requestSystemAccess } from './permissions';
 import { updateSettings as persistSettings, chooseStorageDirectory } from './settings';
@@ -192,7 +192,12 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     return buildBootstrapState();
   });
 
-  ipcMain.handle('dictation:captureTarget', async () => getFocusInfo());
+  ipcMain.handle('dictation:captureTarget', async () => {
+    // Recording is starting: load the writing model while the user speaks. Failures surface later in the rewrite step.
+    const settings = dependencies.getSettings();
+    if (settings.enhancementLevel !== 'none') void warmOllamaModel(settings.ollamaBaseUrl, settings.textModel).catch(() => {});
+    return getFocusInfo();
+  });
 
   const run = async (request: DictationRequest, retry = false) => {
     if (setupController) throw new Error('Wait for writing setup to finish or stop setup first.');

@@ -95,10 +95,13 @@ class UndertoneHelper {
         if (Down(0x11)||Down(0x12)||Down(0x10)||Down(0x5B)||Down(0x5C)) return new {ok=false, reason="modifiers_held"};
         var current = Capture();
         if (current.processIdentifier.ToString()!=args[2] || current.windowHandle!=args[3]) return new {ok=false, reason="window_changed"};
-        if (!current.canPaste) return new {ok=false, reason=current.reason};
-        bool sameField = current.focusToken == args[4] && args[4].Length > 0;
-        bool sameReplacement = args.Length > 5 && args[5].Length > 0 && current.fieldSignature == args[5];
-        if (!sameField && !sameReplacement) return new {ok=false, reason="field_changed"};
+        // Block only positively unsafe fields. Chromium apps often expose no field until their
+        // accessibility tree is built, so an unidentified field in the same window still gets the paste.
+        if (!current.canPaste && (current.reason=="password" || current.reason=="disabled" ||
+            current.reason=="read_only" || current.reason=="accessibility_unavailable")) return new {ok=false, reason=current.reason};
+        bool sameField = current.canPaste && args[4].Length > 0 && current.focusToken == args[4];
+        bool sameReplacement = current.canPaste && args.Length > 5 && args[5].Length > 0 && current.fieldSignature == args[5];
+        if (current.canPaste && args[4].Length > 0 && !sameField && !sameReplacement) return new {ok=false, reason="field_changed"};
         // Recheck foreground immediately before input; never activate another window.
         if (GetForegroundWindow().ToInt64().ToString()!=args[3]) return new {ok=false, reason="window_changed"};
         var keys=new [] { Key(0x11,false), Key(0x56,false), Key(0x56,true), Key(0x11,true) };
@@ -109,7 +112,7 @@ class UndertoneHelper {
             SendInput(2,release,Marshal.SizeOf(typeof(INPUT)));
             return new {ok=false, reason="input_blocked"};
         }
-        return new {ok=true, reason=sameField ? "sent" : "sent_compatible"};
+        return new {ok=true, reason=sameField ? "sent" : sameReplacement ? "sent_compatible" : "sent_window"};
     }
     static void Listen(string chord) {
         int[] keys = chord=="F8" ? new[]{0x77} : chord=="F9" ? new[]{0x78} : chord=="Ctrl+Shift+Space" ? new[]{0x11,0x10,0x20} : new[]{0x11,0x12,0x20};
