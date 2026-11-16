@@ -7,6 +7,7 @@ import type {
   FocusInfo,
   HotkeyEvent,
   UpdateSettingsInput,
+  UpdateStatus,
 } from '../shared/types';
 
 const api = {
@@ -49,6 +50,14 @@ const api = {
     const wrapped = (_event: Electron.IpcRendererEvent, status: AppStatus) => listener(status);
     ipcRenderer.on('app:status', wrapped);
     return () => ipcRenderer.removeListener('app:status', wrapped);
+  },
+  getUpdateStatus: () => ipcRenderer.invoke('updates:status') as Promise<UpdateStatus>,
+  checkForUpdates: () => ipcRenderer.invoke('updates:check') as Promise<UpdateStatus>,
+  restartToUpdate: () => ipcRenderer.invoke('updates:restart'),
+  onUpdateStatus: (listener: (status: UpdateStatus) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => listener(status);
+    ipcRenderer.on('update:status', wrapped);
+    return () => ipcRenderer.removeListener('update:status', wrapped);
   },
   onHotkey: (listener: (event: HotkeyEvent) => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, event: HotkeyEvent) => listener(event);

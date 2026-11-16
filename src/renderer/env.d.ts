@@ -7,6 +7,7 @@ import type {
   FocusInfo,
   HotkeyEvent,
   UpdateSettingsInput,
+  UpdateStatus,
 } from '../shared/types';
 
 declare global {
@@ -41,6 +42,10 @@ declare global {
       openExternal: (targetUrl: string) => Promise<void>;
       revealStorage: () => Promise<void>;
       onStatus: (listener: (status: AppStatus) => void) => () => void;
+      getUpdateStatus: () => Promise<UpdateStatus>;
+      checkForUpdates: () => Promise<UpdateStatus>;
+      restartToUpdate: () => Promise<void>;
+      onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
       onHotkey: (listener: (event: HotkeyEvent) => void) => () => void;
     };
   }
