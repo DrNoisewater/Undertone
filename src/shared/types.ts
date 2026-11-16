@@ -122,3 +122,13 @@ export interface UpdateSettingsInput {
 }
 
 export interface HistoryEntry extends ProcessAudioResult { id: string; createdAt: string; }
+
+export type UpdateState = 'unsupported' | 'idle' | 'checking' | 'downloading' | 'up-to-date' | 'ready' | 'error';
+
+export interface UpdateStatus {
+  state: UpdateState;
+  currentVersion: string;
+  version?: string;
+  percent?: number;
+  message?: string;
+}

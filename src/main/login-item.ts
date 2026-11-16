@@ -1,10 +1,13 @@
 import { app } from 'electron';
 
+import { HIDDEN_LAUNCH_ARG } from '../shared/startup';
+
 export function applyLaunchAtLogin(openAtLogin: boolean): void {
   if (!app.isPackaged) return;
   if (process.platform !== 'darwin') {
     try {
-      app.setLoginItemSettings({ openAtLogin });
+      // The sign-in entry passes HIDDEN_LAUNCH_ARG so Undertone starts in the tray without a window.
+      app.setLoginItemSettings({ openAtLogin, args: [HIDDEN_LAUNCH_ARG] });
     } catch {
       // Ignore platform-specific startup registration errors in development.
     }

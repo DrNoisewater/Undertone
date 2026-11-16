@@ -13,6 +13,7 @@ import type {
   BootstrapState,
   DictationRequest,
   UpdateSettingsInput,
+  UpdateStatus,
 } from '../shared/types';
 import { RECOMMENDED_TEXT_MODEL } from '../shared/recommendations';
 import { processDictationAudio } from './dictation';
@@ -32,6 +33,9 @@ interface IpcDependencies {
   showMainWindow: () => void;
   hideMainWindow: () => void;
   ensureHotkeyListener: () => Promise<void>;
+  getUpdateStatus: () => UpdateStatus;
+  checkForUpdates: () => UpdateStatus;
+  restartToUpdate: () => void;
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
@@ -70,6 +74,9 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   };
 
   ipcMain.handle('app:bootstrap', buildBootstrapState);
+  ipcMain.handle('updates:status', () => dependencies.getUpdateStatus());
+  ipcMain.handle('updates:check', () => dependencies.checkForUpdates());
+  ipcMain.handle('updates:restart', () => dependencies.restartToUpdate());
 
   ipcMain.handle('settings:update', async (_event, updates: UpdateSettingsInput) => {
     const nextSettings = await persistSettings(dependencies.getSettings(), updates);

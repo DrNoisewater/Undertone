@@ -15,7 +15,8 @@ import {
 import { getPermissionState } from './permissions';
 import { loadSettings } from './settings';
 import { ensureStorage } from './storage';
-import { restartToUpdate, startAutoUpdates } from './updater';
+import { checkForUpdates, getUpdateStatus, restartToUpdate, startAutoUpdates } from './updater';
+import { isHiddenLaunch } from '../shared/startup';
 import { createMainWindow, createOverlayWindow, positionOverlayWindow } from './windows';
 import type { AppSettings, AppStatus } from '../shared/types';
 
@@ -23,6 +24,8 @@ app.setName('Undertone');
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) app.quit();
 app.on('second-instance', () => showMainWindow());
+// Started by Windows sign-in: stay in the tray until the user opens the window.
+const startHidden = isHiddenLaunch(process.argv);
 const projectRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
 let mainWindow: BrowserWindow | null = null;
@@ -168,7 +171,7 @@ async function createWindows(): Promise<void> {
   attachWindowDiagnostics(mainWindow, 'main');
 
   mainWindow.on('ready-to-show', () => {
-    showMainWindow();
+    if (!startHidden) showMainWindow();
   });
 
   mainWindow.on('close', (event) => {
@@ -185,7 +188,7 @@ async function createWindows(): Promise<void> {
     mainWindow?.hide();
   });
 
-  showMainWindow();
+  if (!startHidden) showMainWindow();
 }
 
 async function bootstrap(): Promise<void> {
@@ -206,13 +209,19 @@ async function bootstrap(): Promise<void> {
     showMainWindow,
     hideMainWindow,
     ensureHotkeyListener,
+    getUpdateStatus,
+    checkForUpdates,
+    restartToUpdate: () => { if (getUpdateStatus().state !== 'ready') return; shutdown(); restartToUpdate(); },
   });
 
   await createWindows();
   await ensureOverlayWindow();
   // Idle overlay remains hidden, including for older saved keep-visible preferences.
   createTray();
-  startAutoUpdates(version => setTrayMenu(version));
+  startAutoUpdates(updateStatus => {
+    broadcast('update:status', updateStatus);
+    if (updateStatus.state === 'ready') setTrayMenu(updateStatus.version);
+  }, showMainWindow);
 
   helperReady = await ensureNativeHelper();
 
