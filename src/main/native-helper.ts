@@ -37,6 +37,7 @@ async function compileHelper(): Promise<boolean> {
     const child = spawn(process.execPath, [path.join(projectRoot, 'scripts/build-native.mjs')], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      windowsHide: true,
     });
 
     child.on('error', () => resolve(false));
@@ -63,8 +64,10 @@ async function runHelperJson<T>(args: string[]): Promise<T> {
   }
 
   return new Promise<T>((resolve, reject) => {
+    // The Windows helper is a console program: without windowsHide every call flashes a console window.
     const child = spawn(getHelperBinaryPath(), args, {
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     let stdout = '';
@@ -149,6 +152,7 @@ export async function startFnListener(
 
   const child = spawn(getHelperBinaryPath(), ['listen', hotkey], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
 
   listenerProcess = child;

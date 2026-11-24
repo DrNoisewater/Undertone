@@ -1,5 +1,5 @@
 import { OverlayVisibility } from './overlay-visibility';
-import { app, BrowserWindow, Menu, Tray, nativeImage, screen } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, screen } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,7 @@ import { registerIpcHandlers } from './ipc';
 import { applyLaunchAtLogin } from './login-item';
 import {
   ensureNativeHelper,
+  getFocusInfo,
   isFnListenerRunning,
   startFnListener,
   stopFnListener,
@@ -229,6 +230,14 @@ async function bootstrap(): Promise<void> {
 
   // Load the downloaded speech model now instead of on the first dictation. Never downloads.
   if (settings.setupComplete) void ensureStorage(settings).then(async storage => (await import('./transcription')).warmTranscriber(settings, storage)).catch(() => {});
+
+  // After sleep, Windows has paged out the helper and Ollama has unloaded the writing model, so the first
+  // dictation waited on both. Load them again as soon as the PC wakes.
+  powerMonitor.on('resume', () => {
+    if (!settings.setupComplete) return;
+    if (helperReady) void getFocusInfo().catch(() => {});
+    if (settings.enhancementLevel !== 'none') void import('./ollama').then(({warmOllamaModel}) => warmOllamaModel(settings.ollamaBaseUrl, settings.textModel)).catch(() => {});
+  });
 }
 
 function getTrayIconPath(): string {
