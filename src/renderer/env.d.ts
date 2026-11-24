@@ -37,6 +37,9 @@ declare global {
         pasted: boolean;
       }>;
       pushStatus: (status: AppStatus) => void;
+      getPasteCard: () => Promise<import('../shared/paste-reminder').PasteReminder | null>;
+      dismissPasteCard: () => Promise<void>;
+      onPasteCard: (listener: (reminder: import('../shared/paste-reminder').PasteReminder) => void) => () => void;
       showMainWindow: () => Promise<void>;
       hideMainWindow: () => Promise<void>;
       openExternal: (targetUrl: string) => Promise<void>;

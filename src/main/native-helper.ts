@@ -1,4 +1,5 @@
 import { checkPasteTarget } from '../shared/paste-target';
+import type { PasteCheck } from '../shared/paste-reminder';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -37,6 +38,7 @@ async function compileHelper(): Promise<boolean> {
     const child = spawn(process.execPath, [path.join(projectRoot, 'scripts/build-native.mjs')], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      windowsHide: true,
     });
 
     child.on('error', () => resolve(false));
@@ -56,16 +58,22 @@ export async function ensureNativeHelper(): Promise<boolean> {
   return (await compileHelper()) && (await pathExists(getHelperBinaryPath()));
 }
 
-async function runHelperJson<T>(args: string[]): Promise<T> {
+async function runHelperJson<T>(args: string[], input?: string): Promise<T> {
   const helperReady = await ensureNativeHelper();
   if (!helperReady) {
     throw new Error('The native Undertone helper is not available.');
   }
 
   return new Promise<T>((resolve, reject) => {
+    // The Windows helper is a console program: without windowsHide every call flashes a console window.
     const child = spawn(getHelperBinaryPath(), args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
+
+    // Only paste reads stdin (the dictation, to check it landed); other commands get it closed straight away.
+    child.stdin.on('error', () => {});
+    child.stdin.end(input ?? '', 'utf8');
 
     let stdout = '';
     let stderr = '';
@@ -121,20 +129,22 @@ export async function getFocusInfo(): Promise<FocusInfo> {
   return runHelperJson<FocusInfo>(['focus']);
 }
 
-export async function triggerPaste(targetFocus?: FocusInfo): Promise<{ok:boolean;reason:string}> {
-  if (!targetFocus) return {ok:false,reason:'no_target'};
+export async function triggerPaste(targetFocus?: FocusInfo, text?: string): Promise<{ok:boolean;reason:string;verified:PasteCheck}> {
+  if (!targetFocus) return {ok:false,reason:'no_target',verified:'unknown'};
   // Windows re-checks the field at paste time (see checkPasteTarget); macOS still requires a field at capture.
-  if (process.platform !== 'win32' && !targetFocus.canPaste) return {ok:false,reason:targetFocus.reason || 'no_field'};
+  if (process.platform !== 'win32' && !targetFocus.canPaste) return {ok:false,reason:targetFocus.reason || 'no_field',verified:'unknown'};
   const args = ['paste', targetFocus.bundleIdentifier ?? '', String(targetFocus.processIdentifier ?? ''), targetFocus.windowHandle ?? '', targetFocus.focusToken ?? ''];
   if (process.platform === 'win32') args.push(targetFocus.fieldSignature ?? '');
   try {
     if (process.platform === 'win32') {
       const reason = checkPasteTarget(targetFocus, await getFocusInfo());
-      if (reason) return {ok:false,reason};
+      if (reason) return {ok:false,reason,verified:'unknown'};
     }
-    const result = await runHelperJson<{ok:boolean;reason?:string}>(args);
-    return {ok:result.ok,reason:result.reason || (result.ok ? 'sent' : 'field_changed')};
-  } catch { return {ok:false,reason:'helper_unavailable'}; }
+    // Windows reads the dictation from stdin to check that it landed in the field.
+    const result = await runHelperJson<{ok:boolean;reason?:string;verified?:string}>(args, process.platform === 'win32' ? text ?? '' : undefined);
+    const verified: PasteCheck = result.verified === 'confirmed' || result.verified === 'missing' ? result.verified : 'unknown';
+    return {ok:result.ok,reason:result.reason || (result.ok ? 'sent' : 'field_changed'),verified};
+  } catch { return {ok:false,reason:'helper_unavailable',verified:'unknown'}; }
 }
 
 export async function startFnListener(
@@ -149,6 +159,7 @@ export async function startFnListener(
 
   const child = spawn(getHelperBinaryPath(), ['listen', hotkey], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
 
   listenerProcess = child;
@@ -167,6 +178,8 @@ export async function startFnListener(
       }
 
       if (message.type === 'cancel') onEvent({type: 'cancel'});
+
+      if (message.type === 'pasteKey') onEvent({type: 'paste'});
 
       if (message.type === 'fnUp') {
         onEvent({ type: 'up' });
