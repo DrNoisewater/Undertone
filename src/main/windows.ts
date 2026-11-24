@@ -99,3 +99,49 @@ export async function createOverlayWindow(): Promise<BrowserWindow> {
 
   return window;
 }
+
+const pasteCardWidth = 340;
+const pasteCardHeight = 108;
+
+/** Bottom-right of the work area, just above the taskbar's right end (the notification corner). */
+export function positionPasteCardWindow(window: BrowserWindow, anchor = screen.getCursorScreenPoint()): void {
+  const workArea = screen.getDisplayNearestPoint(anchor).workArea;
+  const margin = 4;
+  window.setBounds({
+    x: workArea.x + workArea.width - pasteCardWidth - margin,
+    y: workArea.y + workArea.height - pasteCardHeight - margin,
+    width: pasteCardWidth,
+    height: pasteCardHeight,
+  });
+}
+
+export async function createPasteCardWindow(): Promise<BrowserWindow> {
+  const window = new BrowserWindow({
+    width: pasteCardWidth,
+    height: pasteCardHeight,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    // Clicking the card must not take focus from the text field the user is about to paste into.
+    focusable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      backgroundThrottling: false,
+      spellcheck: false,
+    },
+  });
+
+  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  window.setAlwaysOnTop(true, 'screen-saver');
+  positionPasteCardWindow(window);
+
+  await loadRendererWindow(window, 'paste-card');
+
+  return window;
+}

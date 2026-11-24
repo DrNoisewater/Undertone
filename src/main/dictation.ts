@@ -1,5 +1,6 @@
 import { getRewriteTimings, recordRewriteTiming } from './rewrite-timings';
 import { pasteExplanation } from '../shared/paste-feedback';
+import { pasteReminderFor, type PasteCheck, type PasteReminder } from '../shared/paste-reminder';
 import { keepsSpeakerWords, prepareDictationText } from '../shared/text-tools';
 import { clipboard } from 'electron';
 
@@ -16,6 +17,7 @@ interface ProcessDictationOptions {
   targetFocus?: FocusInfo;
   setStatus: (status: AppStatus) => void;
   onTextReady?: (result: ProcessAudioResult) => void;
+  onPasteFinished?: (text: string, reminder: PasteReminder | null) => void;
 }
 
 function createIdleStatus(): AppStatus {
@@ -32,6 +34,7 @@ export async function processDictationAudio({
   targetFocus,
   setStatus,
   onTextReady,
+  onPasteFinished,
 }: ProcessDictationOptions): Promise<ProcessAudioResult> {
   const storage = await ensureStorage(settings);
 
@@ -81,6 +84,7 @@ export async function processDictationAudio({
   clipboard.writeText(finalText);
 
   let pasted = false;
+  let pasteCheck: PasteCheck = 'unknown';
   const focusInfo = targetFocus;
   let pasteReason = settings.autoPaste ? 'no_target' : 'auto_paste_off';
 
@@ -93,24 +97,26 @@ export async function processDictationAudio({
       rawText,
     });
 
-    const outcome = await triggerPaste(targetFocus);
-    pasted = outcome.ok; pasteReason = outcome.reason;
+    const outcome = await triggerPaste(targetFocus, finalText);
+    pasted = outcome.ok; pasteReason = outcome.reason; pasteCheck = outcome.verified;
   }
 
   setStatus({
     phase: 'done',
     rewriteTimings: getRewriteTimings(settings.ollamaBaseUrl + '|' + settings.textModel),
-    title: pasted ? 'Paste sent' : 'Copied — paste manually',
+    title: pasted ? (pasteCheck === 'confirmed' ? 'Pasted' : pasteCheck === 'missing' ? 'Paste did not land — press Ctrl+V' : 'Paste sent') : 'Copied — paste manually',
     detail: pasteExplanation(pasteReason).replaceAll('Ctrl+V', process.platform === 'darwin' ? 'Command+V' : 'Ctrl+V') + (usedRewriteFallback ? ' Your original wording was used because polishing was unavailable, changed formatting, or drifted from what you said.' : ''),
     preview: finalText,
     rawText,
   });
+  onPasteFinished?.(finalText, pasteReminderFor(finalText, pasted, pasteReason, pasteCheck, process.platform === 'darwin' ? 'Command+V' : 'Ctrl+V'));
 
   const result = {
     rawText,
     finalText,
     pasted,
     pasteReason,
+    pasteCheck,
     focusInfo,
   };
   if (settings.keepHistory) await addHistory(result).catch(() => {});

@@ -1,5 +1,5 @@
 import { OverlayVisibility } from './overlay-visibility';
-import { app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, screen } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, Menu, Tray, nativeImage, powerMonitor, screen } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +18,8 @@ import { loadSettings } from './settings';
 import { ensureStorage } from './storage';
 import { checkForUpdates, getUpdateStatus, restartToUpdate, startAutoUpdates } from './updater';
 import { isHiddenLaunch } from '../shared/startup';
-import { createMainWindow, createOverlayWindow, positionOverlayWindow } from './windows';
+import { createMainWindow, createOverlayWindow, createPasteCardWindow, positionOverlayWindow, positionPasteCardWindow } from './windows';
+import { PasteReminderCard, type PasteReminder } from '../shared/paste-reminder';
 import type { AppSettings, AppStatus } from '../shared/types';
 
 app.setName('Undertone');
@@ -53,6 +54,47 @@ const overlayVisibility = new OverlayVisibility({
   hide: () => { if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide(); },
 });
 
+// "Text still needs pasting" card above the right end of the taskbar.
+let pasteCardWindow: BrowserWindow | null = null;
+let pasteCardCreation: Promise<BrowserWindow> | null = null;
+let pasteCardReminder: PasteReminder | null = null;
+let pasteCardGeneration = 0;
+let clipboardWatch: ReturnType<typeof setInterval> | undefined;
+const pasteCard = new PasteReminderCard({
+  show: reminder => {
+    const generation = ++pasteCardGeneration;
+    pasteCardReminder = reminder;
+    clearInterval(clipboardWatch);
+    clipboardWatch = setInterval(() => pasteCard.clipboardIs(clipboard.readText()), 1000);
+    void ensurePasteCardWindow().then(window => {
+      if (generation !== pasteCardGeneration || window.isDestroyed()) return;
+      positionPasteCardWindow(window, overlayAnchor);
+      window.webContents.send('pasteCard:show', reminder);
+      window.setAlwaysOnTop(true, 'screen-saver');
+      window.showInactive();
+    }).catch(error => console.error('[openwhisp:paste-card]', error));
+  },
+  hide: () => {
+    ++pasteCardGeneration;
+    pasteCardReminder = null;
+    clearInterval(clipboardWatch);
+    if (pasteCardWindow && !pasteCardWindow.isDestroyed()) pasteCardWindow.hide();
+  },
+});
+
+function ensurePasteCardWindow(): Promise<BrowserWindow> {
+  if (pasteCardWindow && !pasteCardWindow.isDestroyed()) return Promise.resolve(pasteCardWindow);
+  pasteCardCreation ??= createPasteCardWindow().then(window => {
+    pasteCardWindow = window;
+    attachWindowDiagnostics(window, 'paste-card');
+    return window;
+  }).finally(() => { pasteCardCreation = null; });
+  return pasteCardCreation;
+}
+
+ipcMain.handle('pasteCard:get', () => pasteCardReminder);
+ipcMain.handle('pasteCard:dismiss', () => pasteCard.hide());
+
 function shutdown(): void {
   if (isQuitting) {
     return;
@@ -61,6 +103,7 @@ function shutdown(): void {
   isQuitting = true;
   stopFnListener();
   overlayVisibility.dispose();
+  pasteCard.hide();
 }
 
 function broadcast(channel: string, payload: unknown): void {
@@ -86,6 +129,8 @@ async function ensureOverlayWindow(): Promise<BrowserWindow | null> {
 
 function setStatus(nextStatus: AppStatus): void {
   if (nextStatus.phase === 'starting' || !overlayAnchor) overlayAnchor = screen.getCursorScreenPoint();
+  // A new dictation replaces the old reminder.
+  if (nextStatus.phase === 'starting' || nextStatus.phase === 'listening') pasteCard.hide();
   status = nextStatus;
   broadcast('app:status', nextStatus);
   overlayVisibility.setPhase(nextStatus.phase);
@@ -152,6 +197,7 @@ async function ensureHotkeyListener(): Promise<void> {
 
   await startFnListener(
     (event) => {
+      if (event.type === 'paste') { pasteCard.pasteKeyPressed(); return; }
       if (event.type === 'down' && ['transcribing','rewriting','pasting'].includes(status.phase)) return;
       broadcast('hotkey:event', event);
 
@@ -207,6 +253,7 @@ async function bootstrap(): Promise<void> {
     getStatus: () => status,
     setStatus,
     getHelperReady: () => helperReady,
+    onPasteFinished: (text, reminder) => pasteCard.show(text, reminder),
     showMainWindow,
     hideMainWindow,
     ensureHotkeyListener,

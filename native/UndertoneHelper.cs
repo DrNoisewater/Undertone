@@ -1,5 +1,8 @@
 using System;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -27,6 +30,7 @@ class UndertoneHelper {
         public bool canPaste;
         public string appName = "", windowHandle = "", focusToken = "", fieldSignature = "", reason = "no_field";
         public uint processIdentifier;
+        [ScriptIgnore] public AutomationElement editor;
     }
     static string Token(AutomationElement e) { try { return string.Join(".", e.GetRuntimeId()); } catch { return ""; } }
     static string Signature(AutomationElement e) {
@@ -80,6 +84,7 @@ class UndertoneHelper {
                     editor = focused;
             }
             if (editor == null) return result;
+            result.editor = editor;
             result.focusToken = Token(editor);
             result.fieldSignature = Signature(editor);
             result.canPaste = result.focusToken.Length > 0;
@@ -89,8 +94,49 @@ class UndertoneHelper {
     }
     static void Focus() { Emit(Capture()); }
     static INPUT Key(ushort key, bool up) { return new INPUT { type=1, data=new UNION { key=new KEYBDINPUT { vk=key, flags=up ? 2u : 0u } } }; }
+    const int MaxRead = 200000;
+    // Reads the field only to compare it with the dictation; its text is never written out.
+    static string ReadField(AutomationElement e) {
+        if (e == null) return null;
+        try {
+            object p;
+            if (e.TryGetCurrentPattern(TextPattern.Pattern, out p)) return ((TextPattern)p).DocumentRange.GetText(MaxRead + 1);
+            if (e.TryGetCurrentPattern(ValuePattern.Pattern, out p)) return ((ValuePattern)p).Current.Value;
+        } catch { }
+        return null;
+    }
+    static string Squash(string s) { return Regex.Replace(s ?? "", @"\s+", " ").Trim(); }
+    static bool Readable(string s) { return s != null && s.Length <= MaxRead; }
+    static int Count(string text, string part) {
+        int n = 0;
+        for (int i = text.IndexOf(part, StringComparison.Ordinal); i >= 0; i = text.IndexOf(part, i + 1, StringComparison.Ordinal)) n++;
+        return n;
+    }
+    // confirmed: the dictation now appears once more than before. missing: the field is readable and stayed unchanged for
+    // a full second (slow apps get that long before "Not pasted" is claimed, which makes a double paste from the user unlikely).
+    // unknown: the app hides its text or changed it some other way.
+    static string CheckPasted(AutomationElement field, string before, string expected) {
+        var want = Squash(expected);
+        if (want.Length == 0 || field == null) return "unknown";
+        // The end of the paste sits at the caret and survives editors that reflow the start.
+        if (want.Length > 80) want = want.Substring(want.Length - 80);
+        var was = Readable(before) ? Squash(before) : null;
+        string now = null;
+        // Stay well inside Undertone's 5 s helper timeout even when a huge document reads slowly.
+        var clock = Stopwatch.StartNew();
+        for (int i = 0; i < 10 && clock.ElapsedMilliseconds < 1500; i++) {
+            Thread.Sleep(100);
+            var after = ReadField(field);
+            now = Readable(after) ? Squash(after) : null;
+            if (now != null && now.Length > 0 && Count(now, want) > (was == null ? 0 : Count(was, want))) return "confirmed";
+        }
+        return was != null && now != null && now.Length > 0 && now == was ? "missing" : "unknown";
+    }
     static object Paste(string[] args) {
         if (args.Length < 5) return new {ok=false, reason="no_target"};
+        // The dictation arrives on stdin (not the command line, which other programs can read).
+        string expected = "";
+        try { expected = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false)).ReadToEnd(); } catch { }
         for (int i=0; i<100 && (Down(0x11)||Down(0x12)||Down(0x10)||Down(0x5B)||Down(0x5C)); i++) Thread.Sleep(10);
         if (Down(0x11)||Down(0x12)||Down(0x10)||Down(0x5B)||Down(0x5C)) return new {ok=false, reason="modifiers_held"};
         var current = Capture();
@@ -104,6 +150,9 @@ class UndertoneHelper {
         if (current.canPaste && args[4].Length > 0 && !sameField && !sameReplacement) return new {ok=false, reason="field_changed"};
         // Recheck foreground immediately before input; never activate another window.
         if (GetForegroundWindow().ToInt64().ToString()!=args[3]) return new {ok=false, reason="window_changed"};
+        AutomationElement field = current.editor;
+        if (field == null) { try { field = AutomationElement.FocusedElement; } catch { } }
+        var before = ReadField(field);
         var keys=new [] { Key(0x11,false), Key(0x56,false), Key(0x56,true), Key(0x11,true) };
         uint sent = SendInput(4,keys,Marshal.SizeOf(typeof(INPUT)));
         if (sent != 4) {
@@ -112,17 +161,21 @@ class UndertoneHelper {
             SendInput(2,release,Marshal.SizeOf(typeof(INPUT)));
             return new {ok=false, reason="input_blocked"};
         }
-        return new {ok=true, reason=sameField ? "sent" : sameReplacement ? "sent_compatible" : "sent_window"};
+        return new {ok=true, reason=sameField ? "sent" : sameReplacement ? "sent_compatible" : "sent_window", verified=CheckPasted(field, before, expected)};
     }
     static void Listen(string chord) {
         int[] keys = chord=="F8" ? new[]{0x77} : chord=="F9" ? new[]{0x78} : chord=="Ctrl+Shift+Space" ? new[]{0x11,0x10,0x20} : new[]{0x11,0x12,0x20};
-        bool was=false, escapeWas=false;
+        bool was=false, escapeWas=false, pasteWas=false;
         while(true) {
             bool down=true; foreach(int k in keys) down &= Down(k);
             if(down!=was) { Emit(new {type=down ? "fnDown" : "fnUp"}); was=down; }
             bool escape=Down(0x1B);
             if(escape && !escapeWas) Emit(new {type="cancel"});
             escapeWas=escape;
+            // Ctrl+V or Shift+Insert anywhere: lets Undertone take down its "press Ctrl+V" reminder.
+            bool paste=(Down(0x11) && Down(0x56)) || (Down(0x10) && Down(0x2D));
+            if(paste && !pasteWas) Emit(new {type="pasteKey"});
+            pasteWas=paste;
             Thread.Sleep(10);
         }
     }

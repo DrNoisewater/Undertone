@@ -1,3 +1,4 @@
+import type { PasteCheck } from './paste-reminder';
 export type EnhancementLevel = 'none' | 'soft' | 'medium' | 'high';
 export type StyleMode = 'conversation' | 'vibe-coding';
 
@@ -88,6 +89,8 @@ export interface ProcessAudioResult {
   finalText: string;
   pasted: boolean;
   pasteReason?: string;
+  /** Whether Undertone saw the text arrive in the field (Windows only). */
+  pasteCheck?: PasteCheck;
   focusInfo?: FocusInfo;
 }
 
@@ -97,7 +100,7 @@ export interface DictationRequest {
 }
 
 export interface HotkeyEvent {
-  type: 'down' | 'up' | 'cancel';
+  type: 'down' | 'up' | 'cancel' | 'paste';
 }
 
 export interface UpdateSettingsInput {

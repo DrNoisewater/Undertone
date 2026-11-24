@@ -30,6 +30,7 @@ interface IpcDependencies {
   getStatus: () => AppStatus;
   setStatus: (status: AppStatus) => void;
   getHelperReady: () => boolean;
+  onPasteFinished: (text: string, reminder: import('../shared/paste-reminder').PasteReminder | null) => void;
   showMainWindow: () => void;
   hideMainWindow: () => void;
   ensureHotkeyListener: () => Promise<void>;
@@ -220,6 +221,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
         targetFocus: retry ? undefined : request.targetFocus,
         setStatus: dependencies.setStatus,
         onTextReady: result => {textReady = result; lastResult = result;},
+        onPasteFinished: dependencies.onPasteFinished,
       });
       lastResult = result;
       return result;

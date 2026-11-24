@@ -9,6 +9,7 @@ import type {
   UpdateSettingsInput,
   UpdateStatus,
 } from '../shared/types';
+import type { PasteReminder } from '../shared/paste-reminder';
 
 const api = {
   platform: process.platform,
@@ -42,6 +43,13 @@ const api = {
       pasted: boolean;
     }>,
   pushStatus: (status: AppStatus) => ipcRenderer.send('dictation:status', status),
+  getPasteCard: () => ipcRenderer.invoke('pasteCard:get') as Promise<PasteReminder | null>,
+  dismissPasteCard: () => ipcRenderer.invoke('pasteCard:dismiss'),
+  onPasteCard: (listener: (reminder: PasteReminder) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, reminder: PasteReminder) => listener(reminder);
+    ipcRenderer.on('pasteCard:show', wrapped);
+    return () => ipcRenderer.removeListener('pasteCard:show', wrapped);
+  },
   showMainWindow: () => ipcRenderer.invoke('system:showMainWindow'),
   hideMainWindow: () => ipcRenderer.invoke('system:hideMainWindow'),
   openExternal: (targetUrl: string) => ipcRenderer.invoke('system:openExternal', targetUrl),

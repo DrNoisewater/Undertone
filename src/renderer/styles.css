@@ -23,3 +23,12 @@
 @keyframes processing-wave {0%,100% {transform:scaleY(.3);opacity:.45;}50% {transform:scaleY(1);opacity:1;}}
 @keyframes mark-breathe {0%,100% {opacity:.75;}50% {opacity:1;}}
 @media(prefers-reduced-motion:reduce) {.overlay,.overlay::before,.overlay>svg,.overlay .bars i {animation:none!important;}}
+.paste-card {position:relative;display:flex;align-items:flex-start;gap:10px;margin:10px;padding:11px 10px 11px 13px;height:76px;box-sizing:border-box;border-radius:14px;border:1px solid #80644e;background:linear-gradient(125deg,#27201ef5,#171a20fa);box-shadow:0 3px 12px #0005;color:#eee4d9;overflow:hidden;font-family:inherit;}
+.paste-card.persistent {border-color:#e6b285;box-shadow:0 0 8px #e6b28559,0 3px 12px #0005;}
+.paste-card>svg {width:24px;flex-shrink:0;margin-top:2px;color:var(--accent);}
+.paste-card>div {min-width:0;flex:1;}
+.paste-card strong {display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.paste-card span {display:block;color:#9e9b94;font-size:10px;margin-top:2px;}
+.paste-card em {display:block;color:#c9c2b8;font-size:10px;font-style:normal;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.paste-card button {flex-shrink:0;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:#9e9b94;font-size:16px;line-height:20px;cursor:pointer;}
+.paste-card button:hover {background:#ffffff1a;color:#eee4d9;}
